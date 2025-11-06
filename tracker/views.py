@@ -41,6 +41,8 @@ from datetime import datetime, timedelta
 from django.contrib.auth.views import LogoutView
 from django.views.generic import View
 
+logger = logging.getLogger(__name__)
+
 
 def _mark_overdue_orders(hours=24):
     try:
