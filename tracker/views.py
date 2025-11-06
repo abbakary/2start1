@@ -1043,30 +1043,39 @@ def customer_register(request: HttpRequest):
                     return json_response(False, message="Please complete Step 1 (customer info) before saving.", message_type="error")
                 messages.error(request, "Please complete Step 1 (customer info) before saving.")
                 return redirect(f"{reverse('tracker:customer_register')}?step=1")
-            # Duplicate handling (same-branch exact identity)
+            # Duplicate handling and creation using centralized service
             from .utils import get_user_branch
+            from .services import CustomerService
             user_branch = get_user_branch(request.user)
-            existing = Customer.objects.filter(branch=user_branch, full_name__iexact=full_name, phone=phone).first()
-            if existing:
+
+            try:
+                c, created = CustomerService.create_or_get_customer(
+                    branch=user_branch,
+                    full_name=full_name,
+                    phone=phone,
+                    whatsapp=step1_data.get("whatsapp"),
+                    email=step1_data.get("email"),
+                    address=step1_data.get("address"),
+                    notes=step1_data.get("notes"),
+                    customer_type=step1_data.get("customer_type"),
+                    organization_name=step1_data.get("organization_name"),
+                    tax_number=step1_data.get("tax_number"),
+                    personal_subtype=step1_data.get("personal_subtype"),
+                )
+
+                if not created:
+                    # Customer already exists
+                    if is_ajax:
+                        dup_url = reverse("tracker:customer_detail", kwargs={'pk': c.id}) + "?flash=existing_customer"
+                        return json_response(False, message=f"Customer '{full_name}' already exists.", message_type="info", redirect_url=dup_url)
+                    messages.info(request, f"Customer '{full_name}' already exists. Redirected to their profile.")
+                    return redirect("tracker:customer_detail", pk=c.id)
+            except Exception as e:
+                logger.warning(f"Error creating customer in save_only flow: {e}")
                 if is_ajax:
-                    dup_url = reverse("tracker:customer_detail", kwargs={'pk': existing.id}) + "?flash=existing_customer"
-                    return json_response(False, message=f"Customer '{full_name}' already exists.", message_type="info", redirect_url=dup_url)
-                messages.info(request, f"Customer '{full_name}' already exists. Redirected to their profile.")
-                return redirect("tracker:customer_detail", pk=existing.id)
-            # Create new customer from step1 session
-            c = Customer.objects.create(
-                full_name=full_name,
-                phone=phone,
-                whatsapp=step1_data.get("whatsapp"),
-                email=step1_data.get("email"),
-                address=step1_data.get("address"),
-                notes=step1_data.get("notes"),
-                customer_type=step1_data.get("customer_type"),
-                organization_name=step1_data.get("organization_name"),
-                tax_number=step1_data.get("tax_number"),
-                personal_subtype=step1_data.get("personal_subtype"),
-                branch=user_branch,
-            )
+                    return json_response(False, message="Error creating customer. Please try again.", message_type="error")
+                messages.error(request, "Error creating customer. Please try again.")
+                return redirect(f"{reverse('tracker:customer_register')}?step=1")
             # Clear session step1 after save
             request.session.pop('reg_step1', None)
             if is_ajax:
