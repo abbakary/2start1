@@ -453,6 +453,67 @@
                   .catch(err=>{ console.error('Failed to load services/items for invoice:', err); svcContainer.innerHTML='<div class="text-danger">Failed to load services</div>'; salesContainer.innerHTML=''; });
 
               });
+
+              // Plate search and started orders lookup
+              const plateSearchInput = document.querySelector('[name="plate_number"]');
+              const ordersDropdownContainer = document.getElementById('ordersDropdownContainer');
+              const startedOrdersSelect = document.getElementById('startedOrdersSelect');
+              const selectedOrderIdField = document.querySelector('[name="selected_order_id"]');
+              const selectedOrderIdSelectField = document.querySelector('[name="selected_order_id_select"]');
+
+              if (plateSearchInput) {
+                plateSearchInput.addEventListener('input', function() {
+                  const plate = this.value.trim().toUpperCase();
+
+                  if (plate.length > 2) {
+                    // Fetch started orders for this plate
+                    fetch('{% url "tracker:api_search_started_orders" %}?plate=' + encodeURIComponent(plate), {
+                      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                      if (data.success && data.orders && data.orders.length > 0) {
+                        // Populate dropdown
+                        startedOrdersSelect.innerHTML = '<option value="">-- Create New Order --</option>';
+                        data.orders.forEach(order => {
+                          const started = new Date(order.started_at);
+                          const startedStr = started.toLocaleString('en-US', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'});
+                          const option = document.createElement('option');
+                          option.value = order.id;
+                          option.textContent = `#${order.order_number} - ${order.customer ? order.customer.name : 'Unknown'} (Started: ${startedStr})`;
+                          startedOrdersSelect.appendChild(option);
+                        });
+
+                        // Show dropdown
+                        ordersDropdownContainer.classList.add('active');
+                        ordersDropdownContainer.style.display = 'block';
+                      } else {
+                        // No orders found
+                        startedOrdersSelect.innerHTML = '<option value="">-- No existing orders found, will create new --</option>';
+                        ordersDropdownContainer.classList.add('active');
+                        ordersDropdownContainer.style.display = 'block';
+                      }
+                    })
+                    .catch(err => {
+                      console.error('Failed to search started orders:', err);
+                      ordersDropdownContainer.style.display = 'none';
+                    });
+                  } else {
+                    // Hide dropdown if plate too short
+                    ordersDropdownContainer.style.display = 'none';
+                    ordersDropdownContainer.classList.remove('active');
+                  }
+                });
+              }
+
+              // On order selection, populate the hidden selected_order_id field
+              if (selectedOrderIdSelectField) {
+                selectedOrderIdSelectField.addEventListener('change', function() {
+                  if (selectedOrderIdField) {
+                    selectedOrderIdField.value = this.value || '';
+                  }
+                });
+              }
             </script>
           </form>
         </div>
